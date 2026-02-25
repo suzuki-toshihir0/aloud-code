@@ -4,7 +4,7 @@
       "matcher": "startup|resume",
       "hooks": [{
         "type": "command",
-        "command": "aloud-code hook session-start",
+        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/aloud-code.sh session-start",
         "timeout": 10,
         "async": true
       }]
@@ -13,7 +13,7 @@
       {
         "hooks": [{
           "type": "command",
-          "command": "aloud-code hook toggle",
+          "command": "${CLAUDE_PLUGIN_ROOT}/hooks/aloud-code.sh toggle",
           "timeout": 5,
           "async": false
         }]
@@ -21,7 +21,7 @@
       {
         "hooks": [{
           "type": "command",
-          "command": "aloud-code hook user-prompt",
+          "command": "${CLAUDE_PLUGIN_ROOT}/hooks/aloud-code.sh user-prompt",
           "timeout": 30,
           "async": true
         }]
@@ -30,7 +30,7 @@
     "Stop": [{
       "hooks": [{
         "type": "command",
-        "command": "aloud-code hook stop",
+        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/aloud-code.sh stop",
         "timeout": 30,
         "async": true
       }]
@@ -38,7 +38,7 @@
     "SessionEnd": [{
       "hooks": [{
         "type": "command",
-        "command": "aloud-code hook session-end",
+        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/aloud-code.sh session-end",
         "timeout": 10,
         "async": true
       }]

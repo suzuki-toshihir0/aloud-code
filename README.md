@@ -15,19 +15,15 @@ Claude Code plugin that streams your conversations to Slack or any webhook endpo
 
 ## Installation
 
-### 1. Install the binary
+### 1. Add the plugin to Claude Code
 
 ```bash
-cargo install aloud-code
+claude plugin add suzuki-toshihir0/aloud-code
 ```
 
-### 2. Add the plugin to Claude Code
+The binary is downloaded automatically on first use.
 
-```bash
-claude plugin add https://github.com/suzuki-toshihir0/aloud-code
-```
-
-### 3. Configure your webhook
+### 2. Configure your webhook
 
 ```bash
 mkdir -p ~/.config/aloud-code
