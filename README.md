@@ -51,15 +51,13 @@ my-project [a1b2c3d4]
 I'll help you create a file watcher in Rust...
 ```
 
-Session lifecycle events are also sent:
+## Update
 
+```bash
+claude plugin update aloud-code
 ```
-🟢 Session started
-cwd: `/home/user/my-project`
-model: `claude-sonnet-4-6`
 
-🔴 Session ended
-```
+The binary is updated automatically on the next hook execution.
 
 ## Configuration
 
