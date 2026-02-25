@@ -1,0 +1,13 @@
+{
+  "name": "suzuki-local",
+  "owner": {
+    "name": "Toshihiro Suzuki"
+  },
+  "plugins": [
+    {
+      "name": "aloud-code",
+      "source": "./",
+      "description": "Work Out Loud - stream Claude Code conversations to Slack/webhooks"
+    }
+  ]
+}

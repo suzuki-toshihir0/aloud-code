@@ -1,0 +1,47 @@
+{
+  "hooks": {
+    "SessionStart": [{
+      "matcher": "startup|resume",
+      "hooks": [{
+        "type": "command",
+        "command": "aloud-code hook session-start",
+        "timeout": 10,
+        "async": true
+      }]
+    }],
+    "UserPromptSubmit": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "aloud-code hook toggle",
+          "timeout": 5,
+          "async": false
+        }]
+      },
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "aloud-code hook user-prompt",
+          "timeout": 30,
+          "async": true
+        }]
+      }
+    ],
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "aloud-code hook stop",
+        "timeout": 30,
+        "async": true
+      }]
+    }],
+    "SessionEnd": [{
+      "hooks": [{
+        "type": "command",
+        "command": "aloud-code hook session-end",
+        "timeout": 10,
+        "async": true
+      }]
+    }]
+  }
+}

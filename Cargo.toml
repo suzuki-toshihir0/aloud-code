@@ -1,0 +1,24 @@
+[package]
+name = "aloud-code"
+version = "0.1.0"
+edition = "2021"
+description = "Work Out Loud - stream Claude Code conversations to Slack/webhooks"
+license = "MIT"
+
+[[bin]]
+name = "aloud-code"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json"] }
+anyhow = "1"
+toml = "0.8"
+dirs = "6"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+wiremock = "0.6"
+tempfile = "3"
