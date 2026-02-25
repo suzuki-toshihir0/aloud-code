@@ -11,7 +11,7 @@ Claude Code plugin that streams your conversations to Slack or any webhook endpo
 ### 1. Add the plugin to Claude Code
 
 ```bash
-claude plugin add suzuki-toshihir0/aloud-code
+claude plugin marketplace add suzuki-toshihir0/aloud-code && claude plugin install aloud-code
 ```
 
 The binary is downloaded automatically on first use.
