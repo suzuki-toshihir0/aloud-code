@@ -1,14 +1,5 @@
 {
   "hooks": {
-    "SessionStart": [{
-      "matcher": "startup|resume",
-      "hooks": [{
-        "type": "command",
-        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/aloud-code.sh session-start",
-        "timeout": 10,
-        "async": true
-      }]
-    }],
     "UserPromptSubmit": [
       {
         "hooks": [{
@@ -32,14 +23,6 @@
         "type": "command",
         "command": "${CLAUDE_PLUGIN_ROOT}/hooks/aloud-code.sh stop",
         "timeout": 30,
-        "async": true
-      }]
-    }],
-    "SessionEnd": [{
-      "hooks": [{
-        "type": "command",
-        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/aloud-code.sh session-end",
-        "timeout": 10,
         "async": true
       }]
     }]

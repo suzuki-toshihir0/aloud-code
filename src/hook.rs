@@ -35,17 +35,16 @@ impl HookInput {
         SessionContext {
             session_id: self.session_id.clone().unwrap_or_default(),
             cwd: self.cwd.clone().unwrap_or_default(),
-            model: self.model.clone(),
         }
     }
 }
 
-/// `/aloud-code:on` または `/aloud-code:off` のトグルコマンドかどうかを判定
+/// `/aloud-code:on` / `/aloud-code:off` コマンドかどうかを判定
 fn is_toggle_command(prompt: &str) -> bool {
     matches!(prompt.trim(), "/aloud-code:on" | "/aloud-code:off")
 }
 
-/// UserPromptSubmit hook (同期): トグルコマンドを処理してClaudeに届く前にブロック
+/// UserPromptSubmit hook (同期): トグルコマンドを処理
 pub async fn handle_toggle() -> Result<()> {
     let input = HookInput::from_stdin()?;
     let prompt = input.prompt.as_deref().unwrap_or("");
@@ -66,8 +65,7 @@ pub async fn handle_toggle() -> Result<()> {
 pub async fn handle_hook(event: &str) -> Result<()> {
     let input = HookInput::from_stdin()?;
 
-    // session-end以外はON/OFFチェックを行う
-    if event != "session-end" && !config::is_active() {
+    if !config::is_active() {
         println!("{{}}");
         return Ok(());
     }
@@ -85,10 +83,6 @@ pub async fn handle_hook(event: &str) -> Result<()> {
     let sender = WebhookSender::new(webhook_url);
 
     match event {
-        "session-start" => {
-            let payload = formatter::format_session_start(&ctx);
-            sender.send(payload).await?;
-        }
         "user-prompt" => {
             let prompt = input.prompt.as_deref().unwrap_or("");
             // トグルコマンドはhandle_toggleで処理済みのためスキップ
@@ -102,13 +96,6 @@ pub async fn handle_hook(event: &str) -> Result<()> {
             if !message.is_empty() {
                 let payload = formatter::format_assistant_message(message, &ctx);
                 sender.send(payload).await?;
-            }
-        }
-        "session-end" => {
-            if config::is_active() {
-                let payload = formatter::format_session_end(&ctx, input.reason.as_deref());
-                sender.send(payload).await?;
-                config::deactivate()?;
             }
         }
         unknown => {
@@ -172,13 +159,11 @@ mod tests {
         let input = HookInput {
             session_id: Some("xyz789".to_string()),
             cwd: Some("/home/user/proj".to_string()),
-            model: Some("claude-opus-4-6".to_string()),
             ..Default::default()
         };
         let ctx = input.to_session_context();
         assert_eq!(ctx.session_id, "xyz789");
         assert_eq!(ctx.cwd, "/home/user/proj");
-        assert_eq!(ctx.model.as_deref(), Some("claude-opus-4-6"));
     }
 
     #[test]

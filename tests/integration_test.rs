@@ -212,36 +212,3 @@ async fn test_enable_disable_lifecycle() {
     let output = env.run_command(&["disable"]);
     assert!(output.status.success());
 }
-
-#[tokio::test]
-async fn test_session_end_cleans_up_flag() {
-    let env = TestEnv::new();
-    let mock_server = MockServer::start().await;
-
-    Mock::given(method("POST"))
-        .respond_with(ResponseTemplate::new(200))
-        .mount(&mock_server)
-        .await;
-
-    env.set_webhook_url(&format!("{}/webhook", mock_server.uri()));
-
-    // ONにする
-    env.run_command(&["enable"]);
-    assert!(env.state_file.exists(), "enableでフラグが作成されるはず");
-
-    // session-endフックを実行
-    let input = json!({
-        "session_id": "test-session-end",
-        "cwd": "/tmp",
-        "hook_event_name": "SessionEnd",
-        "reason": "normal"
-    });
-    let output = env.run_hook("session-end", &input.to_string()).await;
-    assert!(output.status.success());
-
-    // フラグが削除されていること
-    assert!(
-        !env.state_file.exists(),
-        "session-endでフラグが削除されるはず"
-    );
-}

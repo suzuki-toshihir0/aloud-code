@@ -6,7 +6,6 @@ const MAX_BLOCK_TEXT_LEN: usize = 3000;
 pub struct SessionContext {
     pub session_id: String,
     pub cwd: String,
-    pub model: Option<String>,
 }
 
 impl SessionContext {
@@ -75,47 +74,6 @@ pub fn format_assistant_message(message: &str, ctx: &SessionContext) -> Value {
     })
 }
 
-pub fn format_session_start(ctx: &SessionContext) -> Value {
-    let model_text = ctx
-        .model
-        .as_deref()
-        .map(|m| format!("\nmodel: `{}`", m))
-        .unwrap_or_default();
-    json!({
-        "username": ctx.username(),
-        "blocks": [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": format!(
-                        ":green_circle: *Session started*\ncwd: `{}`{}",
-                        ctx.cwd, model_text
-                    )
-                }
-            }
-        ]
-    })
-}
-
-pub fn format_session_end(ctx: &SessionContext, reason: Option<&str>) -> Value {
-    let reason_text = reason
-        .map(|r| format!("\nreason: {}", r))
-        .unwrap_or_default();
-    json!({
-        "username": ctx.username(),
-        "blocks": [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": format!(":red_circle: *Session ended*{}", reason_text)
-                }
-            }
-        ]
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,7 +82,6 @@ mod tests {
         SessionContext {
             session_id: "abcdef1234567890".to_string(),
             cwd: "/home/user/my-project".to_string(),
-            model: Some("claude-sonnet-4-6".to_string()),
         }
     }
 
@@ -172,80 +129,26 @@ mod tests {
     }
 
     #[test]
-    fn test_format_session_start_contains_cwd_and_model() {
-        let ctx = test_ctx();
-        let payload = format_session_start(&ctx);
-
-        let text = payload["blocks"][0]["text"]["text"].as_str().unwrap();
-        assert!(text.contains(":green_circle:"));
-        assert!(text.contains("/home/user/my-project"));
-        assert!(text.contains("claude-sonnet-4-6"));
-    }
-
-    #[test]
-    fn test_format_session_start_no_model() {
-        let ctx = SessionContext {
-            session_id: "abc123".to_string(),
-            cwd: "/tmp".to_string(),
-            model: None,
-        };
-        let payload = format_session_start(&ctx);
-        let text = payload["blocks"][0]["text"]["text"].as_str().unwrap();
-        assert!(text.contains(":green_circle:"));
-        assert!(!text.contains("model:"));
-    }
-
-    #[test]
-    fn test_format_session_end_with_reason() {
-        let ctx = test_ctx();
-        let payload = format_session_end(&ctx, Some("normal"));
-
-        let text = payload["blocks"][0]["text"]["text"].as_str().unwrap();
-        assert!(text.contains(":red_circle:"));
-        assert!(text.contains("normal"));
-    }
-
-    #[test]
-    fn test_format_session_end_no_reason() {
-        let ctx = test_ctx();
-        let payload = format_session_end(&ctx, None);
-
-        let text = payload["blocks"][0]["text"]["text"].as_str().unwrap();
-        assert!(text.contains(":red_circle:"));
-    }
-
-    #[test]
     fn test_truncate_long_message() {
         let ctx = test_ctx();
         let long_text = "a".repeat(4000);
         let payload = format_user_message(&long_text, &ctx);
 
         let text = payload["blocks"][0]["text"]["text"].as_str().unwrap();
-        // Slackの3000文字制限内に収まること（prefixとサフィックスも含む）
-        assert!(text.len() <= MAX_BLOCK_TEXT_LEN + 50); // prefixの分を加算
+        assert!(text.len() <= MAX_BLOCK_TEXT_LEN + 50);
     }
 
     #[test]
     fn test_slack_emoji_codes_not_unicode() {
-        // Unicode絵文字でなくSlack絵文字コードを使用していること
         let ctx = test_ctx();
         let user_payload = format_user_message("test", &ctx);
         let assistant_payload = format_assistant_message("test", &ctx);
-        let start_payload = format_session_start(&ctx);
-        let end_payload = format_session_end(&ctx, None);
 
         let user_text = user_payload["blocks"][0]["text"]["text"].as_str().unwrap();
         let assistant_text = assistant_payload["blocks"][0]["text"]["text"].as_str().unwrap();
-        let start_text = start_payload["blocks"][0]["text"]["text"].as_str().unwrap();
-        let end_text = end_payload["blocks"][0]["text"]["text"].as_str().unwrap();
 
-        // Slack絵文字コード（:xxx:形式）を使っていること
         assert!(user_text.contains(":bust_in_silhouette:"));
         assert!(assistant_text.contains(":robot_face:"));
-        assert!(start_text.contains(":green_circle:"));
-        assert!(end_text.contains(":red_circle:"));
-
-        // Unicode絵文字（👤🤖）を使っていないこと
         assert!(!user_text.contains('👤'));
         assert!(!assistant_text.contains('🤖'));
     }
