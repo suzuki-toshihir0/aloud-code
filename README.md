@@ -6,13 +6,6 @@ Claude Code plugin that streams your conversations to Slack or any webhook endpo
 
 ![screenshot](img/screenshot.png)
 
-## Features
-
-- 🔔 **Real-time streaming** - sends messages to Slack as you chat with Claude
-- 🔧 **Claude Code plugin** - integrates natively via hooks, no separate process needed
-- ⚡ **ON/OFF control** - toggle streaming per session with slash commands
-- 🔁 **Retry support** - automatic retries on webhook failures
-
 ## Installation
 
 ### 1. Add the plugin to Claude Code
