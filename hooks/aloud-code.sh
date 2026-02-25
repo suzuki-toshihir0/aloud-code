@@ -1,14 +1,24 @@
 #!/bin/sh
 # aloud-code hook runner
-# バイナリが未インストールの場合、GitHub Releases から自動ダウンロードする
+# バイナリが未インストール、またはバージョンが古い場合に GitHub Releases から自動ダウンロードする
 
 BINARY_NAME="aloud-code"
 INSTALL_DIR="${HOME}/.local/bin"
 BINARY_PATH="${INSTALL_DIR}/${BINARY_NAME}"
+STATE_DIR="${HOME}/.local/state/aloud-code"
+VERSION_FILE="${STATE_DIR}/installed_version"
 REPO="suzuki-toshihir0/aloud-code"
 
-# バイナリが存在しない場合はダウンロード
-if [ ! -f "${BINARY_PATH}" ]; then
+# plugin.json からバージョンを取得
+PLUGIN_VERSION="$(cat "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json" | grep '"version"' | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+
+# インストール済みバージョンと比較
+INSTALLED_VERSION=""
+if [ -f "${VERSION_FILE}" ]; then
+    INSTALLED_VERSION="$(cat "${VERSION_FILE}")"
+fi
+
+if [ ! -f "${BINARY_PATH}" ] || [ "${INSTALLED_VERSION}" != "${PLUGIN_VERSION}" ]; then
     # プラットフォーム判定
     OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
     ARCH="$(uname -m)"
@@ -32,9 +42,9 @@ if [ ! -f "${BINARY_PATH}" ]; then
     esac
 
     ASSET="${BINARY_NAME}-${OS_NAME}-${ARCH_NAME}"
-    URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
+    URL="https://github.com/${REPO}/releases/download/v${PLUGIN_VERSION}/${ASSET}"
 
-    mkdir -p "${INSTALL_DIR}"
+    mkdir -p "${INSTALL_DIR}" "${STATE_DIR}"
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL "${URL}" -o "${BINARY_PATH}" || { echo "aloud-code: download failed" >&2; exit 0; }
     elif command -v wget >/dev/null 2>&1; then
@@ -44,6 +54,7 @@ if [ ! -f "${BINARY_PATH}" ]; then
         exit 0
     fi
     chmod +x "${BINARY_PATH}"
+    echo "${PLUGIN_VERSION}" > "${VERSION_FILE}"
 fi
 
 exec "${BINARY_PATH}" hook "$@"
