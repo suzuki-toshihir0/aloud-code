@@ -53,18 +53,13 @@ pub async fn handle_toggle() -> Result<()> {
     match prompt.trim() {
         "/aloud-code:on" => {
             config::activate()?;
-            // decision: block でClaudeへの転送を止める
-            println!(r#"{{"decision":"block","reason":"aloud-code: enabled"}}"#);
         }
         "/aloud-code:off" => {
             config::deactivate()?;
-            println!(r#"{{"decision":"block","reason":"aloud-code: disabled"}}"#);
         }
-        _ => {
-            // トグルコマンド以外は通常処理へ
-            println!("{{}}");
-        }
+        _ => {}
     }
+    println!("{{}}");
     Ok(())
 }
 
