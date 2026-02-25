@@ -123,7 +123,7 @@ mod tests {
     fn test_ctx() -> SessionContext {
         SessionContext {
             session_id: "abcdef1234567890".to_string(),
-            cwd: "/home/suzuki/my-project".to_string(),
+            cwd: "/home/user/my-project".to_string(),
             model: Some("claude-sonnet-4-6".to_string()),
         }
     }
@@ -178,7 +178,7 @@ mod tests {
 
         let text = payload["blocks"][0]["text"]["text"].as_str().unwrap();
         assert!(text.contains(":green_circle:"));
-        assert!(text.contains("/home/suzuki/my-project"));
+        assert!(text.contains("/home/user/my-project"));
         assert!(text.contains("claude-sonnet-4-6"));
     }
 

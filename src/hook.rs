@@ -134,7 +134,7 @@ mod tests {
         let json = r#"{
             "session_id": "abc123",
             "transcript_path": "/tmp/test.jsonl",
-            "cwd": "/home/suzuki/project",
+            "cwd": "/home/user/project",
             "hook_event_name": "UserPromptSubmit",
             "prompt": "Hello, Claude!",
             "model": "claude-sonnet-4-6"
@@ -149,7 +149,7 @@ mod tests {
     fn test_deserialize_stop_input() {
         let json = r#"{
             "session_id": "abc123",
-            "cwd": "/home/suzuki/project",
+            "cwd": "/home/user/project",
             "hook_event_name": "Stop",
             "last_assistant_message": "I can help with that!"
         }"#;

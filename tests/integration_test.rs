@@ -84,7 +84,7 @@ async fn test_user_prompt_webhook_when_enabled() {
     // user-promptフックを実行
     let input = json!({
         "session_id": "test-session-12345678",
-        "cwd": "/home/suzuki/test-project",
+        "cwd": "/home/user/test-project",
         "hook_event_name": "UserPromptSubmit",
         "prompt": "Hello from integration test!",
         "model": "claude-sonnet-4-6"
@@ -159,7 +159,7 @@ async fn test_stop_hook_sends_assistant_message() {
 
     let input = json!({
         "session_id": "test-session-stop",
-        "cwd": "/home/suzuki/proj",
+        "cwd": "/home/user/proj",
         "hook_event_name": "Stop",
         "last_assistant_message": "I've completed the task!"
     });
