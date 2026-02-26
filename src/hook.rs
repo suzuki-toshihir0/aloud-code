@@ -48,13 +48,14 @@ fn is_toggle_command(prompt: &str) -> bool {
 pub async fn handle_toggle() -> Result<()> {
     let input = HookInput::from_stdin()?;
     let prompt = input.prompt.as_deref().unwrap_or("");
+    let session_id = input.session_id.as_deref().unwrap_or("");
 
     match prompt.trim() {
         "/aloud-code:on" => {
-            config::activate()?;
+            config::activate(session_id)?;
         }
         "/aloud-code:off" => {
-            config::deactivate()?;
+            config::deactivate(session_id)?;
         }
         _ => {}
     }
@@ -64,8 +65,9 @@ pub async fn handle_toggle() -> Result<()> {
 
 pub async fn handle_hook(event: &str) -> Result<()> {
     let input = HookInput::from_stdin()?;
+    let session_id = input.session_id.as_deref().unwrap_or("");
 
-    if !config::is_active() {
+    if !config::is_active(session_id) {
         println!("{{}}");
         return Ok(());
     }

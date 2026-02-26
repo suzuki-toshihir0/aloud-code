@@ -15,22 +15,21 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Some("enable") => {
-            config::activate()?;
-            eprintln!("aloud-code: enabled");
+            eprintln!("aloud-code: `enable` コマンドは廃止されました。Claude Code 内で `/aloud-code:on` を使用してください");
+            std::process::exit(1);
         }
         Some("disable") => {
-            config::deactivate()?;
-            eprintln!("aloud-code: disabled");
+            config::deactivate_all()?;
+            eprintln!("aloud-code: disabled (all sessions)");
         }
         _ => {
-            eprintln!("Usage: aloud-code <hook <event>|enable|disable>");
+            eprintln!("Usage: aloud-code <hook <event>|disable>");
             eprintln!("  hook toggle         - UserPromptSubmit hook (on/offトグル, 同期)");
-            eprintln!("  hook session-start  - SessionStart hook");
             eprintln!("  hook user-prompt    - UserPromptSubmit hook (Webhook送信, 非同期)");
             eprintln!("  hook stop           - Stop hook");
-            eprintln!("  hook session-end    - SessionEnd hook");
-            eprintln!("  enable              - Slack通知を有効化 (ターミナルから直接実行用)");
-            eprintln!("  disable             - Slack通知を無効化 (ターミナルから直接実行用)");
+            eprintln!("  disable             - 全セッションのSlack通知を無効化");
+            eprintln!("");
+            eprintln!("  ON/OFFの切り替えは Claude Code 内で /aloud-code:on / /aloud-code:off を使用してください");
             std::process::exit(1);
         }
     }

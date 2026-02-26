@@ -12,7 +12,7 @@ fn binary_path() -> std::path::PathBuf {
 
 struct TestEnv {
     config_file: std::path::PathBuf,
-    state_file: std::path::PathBuf,
+    state_dir: std::path::PathBuf,
     _temp_dir: tempfile::TempDir,
 }
 
@@ -20,10 +20,10 @@ impl TestEnv {
     fn new() -> Self {
         let temp_dir = tempfile::TempDir::new().expect("一時ディレクトリ作成失敗");
         let config_file = temp_dir.path().join("config.toml");
-        let state_file = temp_dir.path().join("active");
+        let state_dir = temp_dir.path().to_path_buf();
         TestEnv {
             config_file,
-            state_file,
+            state_dir,
             _temp_dir: temp_dir,
         }
     }
@@ -37,7 +37,7 @@ impl TestEnv {
         std::process::Command::new(binary_path())
             .args(args)
             .env("ALOUD_CODE_CONFIG_FILE", &self.config_file)
-            .env("ALOUD_CODE_STATE_FILE", &self.state_file)
+            .env("ALOUD_CODE_STATE_DIR", &self.state_dir)
             .output()
             .expect("コマンド実行失敗")
     }
@@ -49,7 +49,7 @@ impl TestEnv {
         let mut child = Command::new(binary_path())
             .args(["hook", event])
             .env("ALOUD_CODE_CONFIG_FILE", &self.config_file)
-            .env("ALOUD_CODE_STATE_FILE", &self.state_file)
+            .env("ALOUD_CODE_STATE_DIR", &self.state_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -77,9 +77,14 @@ async fn test_user_prompt_webhook_when_enabled() {
     let webhook_url = format!("{}/webhook", mock_server.uri());
     env.set_webhook_url(&webhook_url);
 
-    // ONにする
-    let output = env.run_command(&["enable"]);
-    assert!(output.status.success(), "enable失敗: {:?}", output);
+    // /aloud-code:on でONにする
+    let toggle_input = json!({
+        "session_id": "test-session-12345678",
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "/aloud-code:on"
+    });
+    let output = env.run_hook("toggle", &toggle_input.to_string()).await;
+    assert!(output.status.success(), "toggle失敗: {:?}", output);
 
     // user-promptフックを実行
     let input = json!({
@@ -123,7 +128,7 @@ async fn test_no_webhook_when_disabled() {
 
     env.set_webhook_url(&format!("{}/webhook", mock_server.uri()));
 
-    // OFFのまま（enableしない）でuser-promptを実行
+    // OFFのまま（toggleしない）でuser-promptを実行
     let input = json!({
         "session_id": "test-session-off",
         "cwd": "/tmp",
@@ -153,9 +158,14 @@ async fn test_stop_hook_sends_assistant_message() {
 
     env.set_webhook_url(&format!("{}/webhook", mock_server.uri()));
 
-    // ONにする
-    let output = env.run_command(&["enable"]);
-    assert!(output.status.success(), "enable失敗");
+    // /aloud-code:on でONにする
+    let toggle_input = json!({
+        "session_id": "test-session-stop",
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "/aloud-code:on"
+    });
+    let output = env.run_hook("toggle", &toggle_input.to_string()).await;
+    assert!(output.status.success(), "toggle失敗");
 
     let input = json!({
         "session_id": "test-session-stop",
@@ -195,20 +205,102 @@ async fn test_enable_disable_lifecycle() {
 
     env.set_webhook_url(&format!("{}/webhook", mock_server.uri()));
 
+    let sessions_dir = env.state_dir.join("sessions");
+
     // 初期状態はOFF
-    assert!(!env.state_file.exists(), "初期状態はOFFのはず");
+    assert!(!sessions_dir.exists(), "初期状態はOFFのはず");
 
-    // ONにする
-    let output = env.run_command(&["enable"]);
+    // /aloud-code:on でONにする
+    let toggle_on = json!({
+        "session_id": "lifecycle-session",
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "/aloud-code:on"
+    });
+    let output = env.run_hook("toggle", &toggle_on.to_string()).await;
     assert!(output.status.success());
-    assert!(env.state_file.exists(), "enable後はフラグが存在するはず");
+    assert!(
+        sessions_dir.join("lifecycle-session").exists(),
+        "enable後はフラグが存在するはず"
+    );
 
-    // OFFにする
+    // /aloud-code:off でOFFにする
+    let toggle_off = json!({
+        "session_id": "lifecycle-session",
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "/aloud-code:off"
+    });
+    let output = env.run_hook("toggle", &toggle_off.to_string()).await;
+    assert!(output.status.success());
+    assert!(
+        !sessions_dir.join("lifecycle-session").exists(),
+        "disable後はフラグが消えるはず"
+    );
+
+    // 複数セッションをONにしてからdisableで全停止
+    let toggle_on_a = json!({
+        "session_id": "session-a",
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "/aloud-code:on"
+    });
+    env.run_hook("toggle", &toggle_on_a.to_string()).await;
+
+    let toggle_on_b = json!({
+        "session_id": "session-b",
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "/aloud-code:on"
+    });
+    env.run_hook("toggle", &toggle_on_b.to_string()).await;
+
+    assert!(sessions_dir.exists(), "sessions dirが存在するはず");
+
+    // disable コマンドで全セッション停止
     let output = env.run_command(&["disable"]);
     assert!(output.status.success());
-    assert!(!env.state_file.exists(), "disable後はフラグが消えるはず");
+    assert!(
+        !sessions_dir.exists(),
+        "disable後はsessions dirが消えるはず"
+    );
 
-    // もう一度OFFにしてもエラーにならない
+    // もう一度disableしてもエラーにならない
     let output = env.run_command(&["disable"]);
     assert!(output.status.success());
+}
+
+#[tokio::test]
+async fn test_no_webhook_for_different_session() {
+    let env = TestEnv::new();
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
+        .mount(&mock_server)
+        .await;
+
+    env.set_webhook_url(&format!("{}/webhook", mock_server.uri()));
+
+    // session-a でON
+    let toggle_on = json!({
+        "session_id": "session-a",
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "/aloud-code:on"
+    });
+    let output = env.run_hook("toggle", &toggle_on.to_string()).await;
+    assert!(output.status.success());
+
+    // session-b でuser-promptを実行（session-aとは異なるセッションID）
+    let input = json!({
+        "session_id": "session-b",
+        "cwd": "/tmp",
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "This should NOT be sent because session-b is not active"
+    });
+    let output = env.run_hook("user-prompt", &input.to_string()).await;
+    assert!(output.status.success());
+
+    // Webhookが届いていないことを確認
+    let requests = mock_server.received_requests().await.unwrap();
+    assert!(
+        requests.is_empty(),
+        "異なるセッションIDなのにWebhookが届いた"
+    );
 }
