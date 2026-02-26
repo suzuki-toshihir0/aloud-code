@@ -1,6 +1,6 @@
 {
   "name": "aloud-code",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Work Out Loud - stream Claude Code conversations to Slack/webhooks",
   "author": { "name": "Toshihiro Suzuki" }
 }
