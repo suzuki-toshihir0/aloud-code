@@ -46,15 +46,6 @@ pub fn deactivate(session_id: &str) -> Result<()> {
     }
 }
 
-pub fn deactivate_all() -> Result<()> {
-    let dir = sessions_dir()?;
-    match std::fs::remove_dir_all(&dir) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.into()),
-    }
-}
-
 fn config_file_path() -> Result<PathBuf> {
     // テストや特殊環境での上書きをサポート
     if let Ok(path) = std::env::var("ALOUD_CODE_CONFIG_FILE") {
@@ -159,24 +150,4 @@ url = "https://hooks.slack.com/services/test"
         });
     }
 
-    #[test]
-    fn test_deactivate_all() {
-        // deactivate_allで全セッションが停止されることを確認
-        with_temp_state_dir(|| {
-            activate("session-x").expect("session-x activate失敗");
-            activate("session-y").expect("session-y activate失敗");
-
-            assert!(is_active("session-x"));
-            assert!(is_active("session-y"));
-
-            deactivate_all().expect("deactivate_all失敗");
-
-            assert!(!is_active("session-x"), "deactivate_all後もsession-xがアクティブ");
-            assert!(!is_active("session-y"), "deactivate_all後もsession-yがアクティブ");
-
-            // 再度deactivate_allしてもエラーにならない
-            let result = deactivate_all();
-            assert!(result.is_ok());
-        });
-    }
 }

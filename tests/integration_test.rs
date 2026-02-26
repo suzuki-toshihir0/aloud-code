@@ -33,15 +33,6 @@ impl TestEnv {
             .expect("config.toml書き込み失敗");
     }
 
-    fn run_command(&self, args: &[&str]) -> std::process::Output {
-        std::process::Command::new(binary_path())
-            .args(args)
-            .env("ALOUD_CODE_CONFIG_FILE", &self.config_file)
-            .env("ALOUD_CODE_STATE_DIR", &self.state_dir)
-            .output()
-            .expect("コマンド実行失敗")
-    }
-
     async fn run_hook(&self, event: &str, input_json: &str) -> std::process::Output {
         use std::io::Write;
         use std::process::{Command, Stdio};
@@ -194,7 +185,7 @@ async fn test_stop_hook_sends_assistant_message() {
 }
 
 #[tokio::test]
-async fn test_enable_disable_lifecycle() {
+async fn test_toggle_lifecycle() {
     let env = TestEnv::new();
     let mock_server = MockServer::start().await;
 
@@ -235,35 +226,6 @@ async fn test_enable_disable_lifecycle() {
         !sessions_dir.join("lifecycle-session").exists(),
         "disable後はフラグが消えるはず"
     );
-
-    // 複数セッションをONにしてからdisableで全停止
-    let toggle_on_a = json!({
-        "session_id": "session-a",
-        "hook_event_name": "UserPromptSubmit",
-        "prompt": "/aloud-code:on"
-    });
-    env.run_hook("toggle", &toggle_on_a.to_string()).await;
-
-    let toggle_on_b = json!({
-        "session_id": "session-b",
-        "hook_event_name": "UserPromptSubmit",
-        "prompt": "/aloud-code:on"
-    });
-    env.run_hook("toggle", &toggle_on_b.to_string()).await;
-
-    assert!(sessions_dir.exists(), "sessions dirが存在するはず");
-
-    // disable コマンドで全セッション停止
-    let output = env.run_command(&["disable"]);
-    assert!(output.status.success());
-    assert!(
-        !sessions_dir.exists(),
-        "disable後はsessions dirが消えるはず"
-    );
-
-    // もう一度disableしてもエラーにならない
-    let output = env.run_command(&["disable"]);
-    assert!(output.status.success());
 }
 
 #[tokio::test]
