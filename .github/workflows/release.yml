@@ -9,25 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  update-plugin-version:
-    name: Update plugin.json version
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Update plugin.json with tag version
-        run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${TAG}\"/" .claude-plugin/plugin.json
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .claude-plugin/plugin.json
-          git diff --cached --quiet || git commit -m "chore: bump plugin.json version to ${TAG}"
-          git push origin HEAD:main
-
   build:
-    needs: update-plugin-version
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:

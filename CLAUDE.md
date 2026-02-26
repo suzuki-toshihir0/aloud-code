@@ -22,7 +22,7 @@ Claude Codeプラグイン。hookイベントを受け取り、Slack等のwebhoo
 url = "https://hooks.slack.com/services/..."
 ```
 
-ON/OFFフラグ: `~/.local/state/aloud-code/active`（ファイル存在=ON）
+ON/OFFフラグ: `~/.local/state/aloud-code/sessions/{session_id}`（ファイル存在=ON）
 
 ## 開発コマンド
 
@@ -34,11 +34,17 @@ cargo test
 ## リリース手順
 
 ```bash
+# 1. plugin.json のバージョンを更新してコミット
+sed -i 's/"version": "[^"]*"/"version": "X.Y.Z"/' .claude-plugin/plugin.json
+git add .claude-plugin/plugin.json
+git commit -m "chore: bump plugin.json version to X.Y.Z"
+git push
+
+# 2. タグを打つ
 git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
 ```
 
 タグを push すると GitHub Actions が以下を自動実行する:
-1. `plugin.json` のバージョンを `X.Y.Z` に更新して main に commit
-2. Linux/macOS 向けバイナリをビルドして GitHub Releases にアップロード
+1. Linux/macOS 向けバイナリをビルドして GitHub Releases にアップロード
 
 ユーザーが `claude plugin update aloud-code` を実行すると、次回 hook 発火時に新バイナリが自動ダウンロードされる（バージョンファイル: `~/.local/state/aloud-code/installed_version`）。
