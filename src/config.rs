@@ -51,8 +51,8 @@ fn config_file_path() -> Result<PathBuf> {
     if let Ok(path) = std::env::var("ALOUD_CODE_CONFIG_FILE") {
         return Ok(PathBuf::from(path));
     }
-    let config_dir = dirs::config_dir()
-        .ok_or_else(|| anyhow::anyhow!("設定ディレクトリが見つかりません"))?;
+    let config_dir =
+        dirs::config_dir().ok_or_else(|| anyhow::anyhow!("設定ディレクトリが見つかりません"))?;
     Ok(config_dir.join("aloud-code").join("config.toml"))
 }
 
@@ -61,8 +61,8 @@ fn sessions_dir() -> Result<PathBuf> {
     if let Ok(dir) = std::env::var("ALOUD_CODE_STATE_DIR") {
         return Ok(PathBuf::from(dir).join("sessions"));
     }
-    let state_dir = dirs::state_dir()
-        .ok_or_else(|| anyhow::anyhow!("ステートディレクトリが見つかりません"))?;
+    let state_dir =
+        dirs::state_dir().ok_or_else(|| anyhow::anyhow!("ステートディレクトリが見つかりません"))?;
     Ok(state_dir.join("aloud-code").join("sessions"))
 }
 
@@ -149,5 +149,4 @@ url = "https://hooks.slack.com/services/test"
             assert!(!is_active("session-c"), "session-cがアクティブになっている");
         });
     }
-
 }

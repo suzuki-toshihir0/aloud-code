@@ -98,7 +98,10 @@ async fn test_user_prompt_webhook_when_enabled() {
 
     let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
     let text = body["blocks"][0]["text"]["text"].as_str().unwrap();
-    assert!(text.contains(":bust_in_silhouette:"), "ユーザー絵文字がない");
+    assert!(
+        text.contains(":bust_in_silhouette:"),
+        "ユーザー絵文字がない"
+    );
     assert!(
         text.contains("Hello from integration test!"),
         "プロンプトが含まれていない: {}",

@@ -145,7 +145,9 @@ mod tests {
         let assistant_payload = format_assistant_message("test", &ctx);
 
         let user_text = user_payload["blocks"][0]["text"]["text"].as_str().unwrap();
-        let assistant_text = assistant_payload["blocks"][0]["text"]["text"].as_str().unwrap();
+        let assistant_text = assistant_payload["blocks"][0]["text"]["text"]
+            .as_str()
+            .unwrap();
 
         assert!(user_text.contains(":bust_in_silhouette:"));
         assert!(assistant_text.contains(":robot_face:"));
