@@ -8,7 +8,7 @@ on:
       - 'tests/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
-      - '.github/workflows/ci.yml'
+      - '.github/workflows/rust.yml'
   pull_request:
     branches: [main]
     paths:
@@ -16,7 +16,7 @@ on:
       - 'tests/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
-      - '.github/workflows/ci.yml'
+      - '.github/workflows/rust.yml'
 
 jobs:
   test:
