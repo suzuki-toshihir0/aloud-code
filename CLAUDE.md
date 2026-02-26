@@ -47,4 +47,8 @@ git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
 タグを push すると GitHub Actions が以下を自動実行する:
 1. Linux/macOS 向けバイナリをビルドして GitHub Releases にアップロード
 
-ユーザーが `claude plugin update aloud-code` を実行すると、次回 hook 発火時に新バイナリが自動ダウンロードされる（バージョンファイル: `~/.local/state/aloud-code/installed_version`）。
+ユーザーが更新するには:
+1. `claude plugin marketplace update suzuki-toshihir0`（リポジトリを最新化）
+2. `claude plugin update aloud-code@suzuki-toshihir0`（プラグインを更新）
+
+次回 hook 発火時に新バイナリが自動ダウンロードされる（バージョンファイル: `~/.local/state/aloud-code/installed_version`）。
