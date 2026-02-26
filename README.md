@@ -54,7 +54,8 @@ I'll help you create a file watcher in Rust...
 ## Update
 
 ```bash
-claude plugin update aloud-code
+claude plugin marketplace update suzuki-toshihir0
+claude plugin update aloud-code@suzuki-toshihir0
 ```
 
 The binary is updated automatically on the next hook execution.
