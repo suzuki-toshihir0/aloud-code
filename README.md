@@ -60,6 +60,12 @@ claude plugin update aloud-code@suzuki-toshihir0
 
 The binary is updated automatically on the next hook execution.
 
+To check the installed version:
+
+```bash
+claude plugin list
+```
+
 ## Configuration
 
 `~/.config/aloud-code/config.toml`:
