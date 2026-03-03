@@ -17,6 +17,11 @@ pub struct HookInput {
     pub last_assistant_message: Option<String>,
     pub reason: Option<String>,
     pub model: Option<String>,
+    // SubagentStop用
+    pub agent_id: Option<String>,
+    pub agent_type: Option<String>,
+    // Notification用
+    pub message: Option<String>,
 }
 
 impl HookInput {
@@ -63,9 +68,55 @@ pub async fn handle_toggle() -> Result<()> {
     Ok(())
 }
 
+/// トランスクリプトから未送信のassistantテキストをフラッシュして送信する
+/// カーソルロックで同一セッションの並行実行を直列化する
+/// 戻り値: 送信したメッセージ数（0 = 新着なし or 初回フラッシュ）
+async fn flush_transcript(
+    session_id: &str,
+    transcript_path: &str,
+    ctx: &SessionContext,
+    sender: &WebhookSender,
+) -> Result<usize> {
+    let (lock, maybe_cursor) = config::CursorLockGuard::acquire(session_id)?;
+
+    let cursor = match maybe_cursor {
+        None => {
+            // カーソルファイルが存在しない = 有効化直後の初回フラッシュ
+            // 過去メッセージは送信せず、現在のファイル末尾にカーソルを設定する
+            let file_size = std::fs::metadata(transcript_path)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            lock.commit(file_size)?;
+            return Ok(0);
+        }
+        Some(c) => c,
+    };
+
+    let (messages, new_cursor) =
+        crate::transcript::read_new_assistant_texts(transcript_path, cursor)?;
+
+    let count = messages.len();
+    for msg in messages {
+        let payload = formatter::format_assistant_message(&msg, ctx);
+        sender.send(payload).await?;
+    }
+
+    // 送信成功後にのみカーソルを更新（at-least-once保証）
+    lock.commit(new_cursor)?;
+    Ok(count)
+}
+
 pub async fn handle_hook(event: &str) -> Result<()> {
     let input = HookInput::from_stdin()?;
-    let session_id = input.session_id.as_deref().unwrap_or("");
+    let session_id = match input.session_id.as_deref() {
+        Some(id) if !id.is_empty() => id,
+        _ => {
+            // session_id欠損時は処理中断（セッション混線防止）
+            eprintln!("aloud-code: session_idが空のため処理をスキップ");
+            println!("{{}}");
+            return Ok(());
+        }
+    };
 
     if !config::is_active(session_id) {
         println!("{{}}");
@@ -84,6 +135,15 @@ pub async fn handle_hook(event: &str) -> Result<()> {
     let ctx = input.to_session_context();
     let sender = WebhookSender::new(webhook_url);
 
+    // トランスクリプト・フラッシュ（Stop以外の全イベント共通）
+    if event != "stop" {
+        if let Some(transcript_path) = &input.transcript_path {
+            if let Err(e) = flush_transcript(session_id, transcript_path, &ctx, &sender).await {
+                eprintln!("aloud-code: トランスクリプトフラッシュエラー: {}", e);
+            }
+        }
+    }
+
     match event {
         "user-prompt" => {
             let prompt = input.prompt.as_deref().unwrap_or("");
@@ -94,11 +154,52 @@ pub async fn handle_hook(event: &str) -> Result<()> {
             }
         }
         "stop" => {
+            // transcript flush を試みる。
+            // 0件（= transcript 書き込みがまだ完了していないレースコンディション）の場合のみ
+            // last_assistant_message にフォールバックしてカーソルを末尾に進める。
+            // PreToolUse を廃止したため二重送信は起きない。
+            let flushed = if let Some(transcript_path) = &input.transcript_path {
+                flush_transcript(session_id, transcript_path, &ctx, &sender)
+                    .await
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            if flushed == 0 {
+                let message = input.last_assistant_message.as_deref().unwrap_or("");
+                if !message.is_empty() {
+                    let payload = formatter::format_assistant_message(message, &ctx);
+                    sender.send(payload).await?;
+                }
+                // カーソルをファイル末尾に進め、次回UserPromptSubmitでの重複送信を防ぐ
+                if let Some(transcript_path) = &input.transcript_path {
+                    let file_size = std::fs::metadata(transcript_path.as_str())
+                        .map(|m| m.len())
+                        .unwrap_or(0);
+                    if let Ok((lock, _)) = config::CursorLockGuard::acquire(session_id) {
+                        let _ = lock.commit(file_size);
+                    }
+                }
+            }
+        }
+        "subagent-stop" => {
+            let agent_type = input.agent_type.as_deref().unwrap_or("Agent");
             let message = input.last_assistant_message.as_deref().unwrap_or("");
             if !message.is_empty() {
-                let payload = formatter::format_assistant_message(message, &ctx);
+                let payload = formatter::format_subagent_message(agent_type, message, &ctx);
                 sender.send(payload).await?;
             }
+        }
+        "notification" => {
+            let message = input.message.as_deref().unwrap_or("");
+            if !message.is_empty() {
+                let payload = formatter::format_notification_message(message, &ctx);
+                sender.send(payload).await?;
+            }
+        }
+        "session-end" => {
+            // セッション非アクティブ化（カーソル+ロックファイルも削除）
+            config::deactivate(session_id)?;
         }
         unknown => {
             eprintln!("aloud-code: 未知のhookイベント: {}", unknown);
@@ -145,6 +246,40 @@ mod tests {
     }
 
     #[test]
+    fn test_deserialize_subagent_stop_input() {
+        let json = r#"{
+            "session_id": "abc123",
+            "cwd": "/home/user/project",
+            "hook_event_name": "SubagentStop",
+            "agent_id": "agent-xyz",
+            "agent_type": "Explore",
+            "last_assistant_message": "Found 5 matching files."
+        }"#;
+        let input: HookInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.agent_id.as_deref(), Some("agent-xyz"));
+        assert_eq!(input.agent_type.as_deref(), Some("Explore"));
+        assert_eq!(
+            input.last_assistant_message.as_deref(),
+            Some("Found 5 matching files.")
+        );
+    }
+
+    #[test]
+    fn test_deserialize_notification_input() {
+        let json = r#"{
+            "session_id": "abc123",
+            "cwd": "/home/user/project",
+            "hook_event_name": "Notification",
+            "message": "Which option do you prefer?"
+        }"#;
+        let input: HookInput = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            input.message.as_deref(),
+            Some("Which option do you prefer?")
+        );
+    }
+
+    #[test]
     fn test_deserialize_session_end_input() {
         let json = r#"{
             "session_id": "abc123",
@@ -187,5 +322,17 @@ mod tests {
         assert!(!is_toggle_command("hello"));
         assert!(!is_toggle_command("/aloud-code:on extra")); // 余分なテキスト
         assert!(!is_toggle_command(""));
+    }
+
+    #[test]
+    fn test_empty_session_id_skipped() {
+        // session_idが空のHookInputはガード条件に引っかかる
+        let input = HookInput {
+            session_id: Some("".to_string()),
+            ..Default::default()
+        };
+        let id = input.session_id.as_deref();
+        let is_empty_or_missing = matches!(id, Some("") | None);
+        assert!(is_empty_or_missing);
     }
 }

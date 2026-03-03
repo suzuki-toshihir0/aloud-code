@@ -1,6 +1,7 @@
 mod config;
 mod formatter;
 mod hook;
+mod transcript;
 mod webhook;
 
 #[tokio::main]

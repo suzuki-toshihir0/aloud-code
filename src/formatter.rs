@@ -74,6 +74,38 @@ pub fn format_assistant_message(message: &str, ctx: &SessionContext) -> Value {
     })
 }
 
+pub fn format_subagent_message(agent_type: &str, message: &str, ctx: &SessionContext) -> Value {
+    let text = truncate(message, MAX_BLOCK_TEXT_LEN);
+    json!({
+        "username": ctx.username(),
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": format!(":gear: *Agent ({})*\n{}", agent_type, text)
+                }
+            }
+        ]
+    })
+}
+
+pub fn format_notification_message(message: &str, ctx: &SessionContext) -> Value {
+    let text = truncate(message, MAX_BLOCK_TEXT_LEN);
+    json!({
+        "username": ctx.username(),
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": format!(":speech_balloon: *Claude → User*\n{}", text)
+                }
+            }
+        ]
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,6 +168,43 @@ mod tests {
 
         let text = payload["blocks"][0]["text"]["text"].as_str().unwrap();
         assert!(text.len() <= MAX_BLOCK_TEXT_LEN + 50);
+    }
+
+    #[test]
+    fn test_format_subagent_message_structure() {
+        let ctx = test_ctx();
+        let payload = format_subagent_message("Explore", "Found relevant files.", &ctx);
+
+        let blocks = payload["blocks"].as_array().unwrap();
+        let text = &blocks[0]["text"]["text"];
+        assert!(text.as_str().unwrap().contains(":gear:"));
+        assert!(text.as_str().unwrap().contains("Agent (Explore)"));
+        assert!(text.as_str().unwrap().contains("Found relevant files."));
+    }
+
+    #[test]
+    fn test_format_subagent_message_truncation() {
+        let ctx = test_ctx();
+        let long_text = "x".repeat(4000);
+        let payload = format_subagent_message("Agent", &long_text, &ctx);
+
+        let text = payload["blocks"][0]["text"]["text"].as_str().unwrap();
+        assert!(text.len() <= MAX_BLOCK_TEXT_LEN + 50);
+    }
+
+    #[test]
+    fn test_format_notification_message_structure() {
+        let ctx = test_ctx();
+        let payload = format_notification_message("Which approach do you prefer?", &ctx);
+
+        let blocks = payload["blocks"].as_array().unwrap();
+        let text = &blocks[0]["text"]["text"];
+        assert!(text.as_str().unwrap().contains(":speech_balloon:"));
+        assert!(text.as_str().unwrap().contains("Claude → User"));
+        assert!(text
+            .as_str()
+            .unwrap()
+            .contains("Which approach do you prefer?"));
     }
 
     #[test]
