@@ -133,14 +133,12 @@ pub async fn handle_hook(event: &str) -> Result<()> {
     let ctx = input.to_session_context();
     let sender = WebhookSender::new(webhook_url);
 
-    // トランスクリプト・フラッシュ（Stop以外の全イベント共通）
-    // Stop hookはtranscript書き込み完了前に発火するレースコンディションがあるため除外し、
-    // last_assistant_messageを直接使う（Stopアームで処理）
-    if event != "stop" {
-        if let Some(transcript_path) = &input.transcript_path {
-            if let Err(e) = flush_transcript(session_id, transcript_path, &ctx, &sender).await {
-                eprintln!("aloud-code: トランスクリプトフラッシュエラー: {}", e);
-            }
+    // トランスクリプト・フラッシュ（全イベント共通）
+    // PreToolUse + Stop の二重送信を防ぐため、Stop も transcript flush で統一する。
+    // カーソルLockによりどちらのフックが先に実行されても整合が保たれる。
+    if let Some(transcript_path) = &input.transcript_path {
+        if let Err(e) = flush_transcript(session_id, transcript_path, &ctx, &sender).await {
+            eprintln!("aloud-code: トランスクリプトフラッシュエラー: {}", e);
         }
     }
 
@@ -157,21 +155,8 @@ pub async fn handle_hook(event: &str) -> Result<()> {
             // フラッシュのみ（上で実行済み）
         }
         "stop" => {
-            // transcriptへの書き込み完了を待たずにlast_assistant_messageを直接送信
-            let message = input.last_assistant_message.as_deref().unwrap_or("");
-            if !message.is_empty() {
-                let payload = formatter::format_assistant_message(message, &ctx);
-                sender.send(payload).await?;
-            }
-            // カーソルをファイル末尾に進め、次回UserPromptSubmitでの重複送信を防ぐ
-            if let Some(transcript_path) = &input.transcript_path {
-                let file_size = std::fs::metadata(transcript_path.as_str())
-                    .map(|m| m.len())
-                    .unwrap_or(0);
-                if let Ok((lock, _)) = config::CursorLockGuard::acquire(session_id) {
-                    let _ = lock.commit(file_size);
-                }
-            }
+            // transcript flush で全テキスト送信済み
+            // last_assistant_message は使わない（PreToolUseとの二重送信防止）
         }
         "subagent-stop" => {
             let agent_type = input.agent_type.as_deref().unwrap_or("Agent");
