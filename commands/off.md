@@ -1,1 +1,1 @@
-Run `aloud-code disable` to deactivate Slack streaming for this session.
+Slack ストリーミングが無効になりました。
