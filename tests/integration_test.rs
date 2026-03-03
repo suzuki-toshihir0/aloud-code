@@ -33,6 +33,17 @@ impl TestEnv {
             .expect("config.toml書き込み失敗");
     }
 
+    /// セッションのカーソル値を手動設定する（テスト用）
+    fn set_cursor(&self, session_id: &str, value: u64) {
+        let sessions_dir = self.state_dir.join("sessions");
+        std::fs::create_dir_all(&sessions_dir).unwrap();
+        std::fs::write(
+            sessions_dir.join(format!("{}.cursor", session_id)),
+            value.to_string(),
+        )
+        .unwrap();
+    }
+
     /// トランスクリプトファイルを作成してパスを返す
     fn create_transcript(&self, entries: &[serde_json::Value]) -> std::path::PathBuf {
         let transcript_path = self._temp_dir.path().join("transcript.jsonl");
@@ -180,6 +191,9 @@ async fn test_stop_hook_sends_assistant_message_via_transcript() {
             "content": [{"type": "text", "text": "I've completed the task!"}]
         }
     })]);
+
+    // カーソルを0に設定（フラッシュ済みセッションをシミュレート）
+    env.set_cursor("test-session-stop", 0);
 
     let input = json!({
         "session_id": "test-session-stop",
@@ -432,6 +446,57 @@ async fn test_session_end_deactivates_session() {
 }
 
 #[tokio::test]
+async fn test_no_historical_messages_on_first_activation() {
+    // 有効化直後の初回フラッシュで過去メッセージが送信されないことを確認
+    let env = TestEnv::new();
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
+        .mount(&mock_server)
+        .await;
+
+    env.set_webhook_url(&format!("{}/webhook", mock_server.uri()));
+
+    // セッションON
+    let toggle_on = json!({
+        "session_id": "fresh-session",
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "/aloud-code:on"
+    });
+    env.run_hook("toggle", &toggle_on.to_string()).await;
+
+    // 有効化前から存在するトランスクリプト（過去メッセージ）
+    let transcript_path = env.create_transcript(&[json!({
+        "type": "assistant",
+        "message": {
+            "content": [{"type": "text", "text": "This is a historical message."}]
+        }
+    })]);
+
+    // 初回フラッシュ: カーソルファイルなし → 過去メッセージは送信しない
+    let input = json!({
+        "session_id": "fresh-session",
+        "cwd": "/home/user/proj",
+        "hook_event_name": "Stop",
+        "transcript_path": transcript_path.to_str().unwrap()
+    });
+    let output = env.run_hook("stop", &input.to_string()).await;
+    assert!(
+        output.status.success(),
+        "stop hook失敗: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let requests = mock_server.received_requests().await.unwrap();
+    assert!(
+        requests.is_empty(),
+        "初回フラッシュで過去メッセージが送信された（{}件）",
+        requests.len()
+    );
+}
+
+#[tokio::test]
 async fn test_flush_transcript_sends_assistant_texts() {
     let env = TestEnv::new();
     let mock_server = MockServer::start().await;
@@ -450,6 +515,9 @@ async fn test_flush_transcript_sends_assistant_texts() {
         "prompt": "/aloud-code:on"
     });
     env.run_hook("toggle", &toggle_on.to_string()).await;
+
+    // カーソルを0に設定（フラッシュ済みセッションをシミュレート）
+    env.set_cursor("flush-session", 0);
 
     // トランスクリプトに2つのassistantメッセージ
     let transcript_path = env.create_transcript(&[

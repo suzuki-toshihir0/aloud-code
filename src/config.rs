@@ -34,7 +34,8 @@ pub struct CursorLockGuard {
 
 impl CursorLockGuard {
     /// ファイルロックを排他取得してカーソル値を返す
-    pub fn acquire(session_id: &str) -> Result<(Self, u64)> {
+    /// カーソルファイルが存在しない（初回有効化・再有効化後）場合は None を返す
+    pub fn acquire(session_id: &str) -> Result<(Self, Option<u64>)> {
         let dir = sessions_dir()?;
         std::fs::create_dir_all(&dir)?;
         let lock_path = dir.join(format!("{}.cursor.lock", session_id));
@@ -68,12 +69,15 @@ impl Drop for CursorLockGuard {
     }
 }
 
-fn read_cursor_inner(session_id: &str) -> u64 {
-    cursor_path(session_id)
+/// カーソルファイルが存在しない場合は None を返す（初回有効化を検出するため）
+fn read_cursor_inner(session_id: &str) -> Option<u64> {
+    let path = cursor_path(session_id).ok()?;
+    if !path.exists() {
+        return None;
+    }
+    std::fs::read_to_string(path)
         .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0)
 }
 
 fn write_cursor_inner(session_id: &str, cursor: u64) -> Result<()> {
@@ -223,17 +227,17 @@ url = "https://hooks.slack.com/services/test"
             activate(session_id).expect("activate失敗");
             write_cursor_inner(session_id, 12345).expect("cursor書き込み失敗");
             let cursor = read_cursor_inner(session_id);
-            assert_eq!(cursor, 12345);
+            assert_eq!(cursor, Some(12345));
         });
     }
 
     #[test]
-    fn test_cursor_default_zero() {
+    fn test_cursor_default_none() {
         with_temp_state_dir(|| {
-            // カーソルファイルがない場合は0
+            // カーソルファイルがない場合は None（初回有効化を検出）
             activate("no-cursor-session").expect("activate失敗");
             let cursor = read_cursor_inner("no-cursor-session");
-            assert_eq!(cursor, 0);
+            assert!(cursor.is_none());
         });
     }
 
@@ -265,19 +269,19 @@ url = "https://hooks.slack.com/services/test"
             let session_id = "lock-test-session";
             activate(session_id).expect("activate失敗");
 
-            // 初回: cursor=0
+            // 初回: cursor=None（カーソルファイルなし = 初回有効化）
             let (guard, cursor) = CursorLockGuard::acquire(session_id).expect("acquire失敗");
-            assert_eq!(cursor, 0);
+            assert!(cursor.is_none());
             guard.commit(500).expect("commit失敗");
 
-            // 2回目: cursor=500
+            // 2回目: cursor=Some(500)
             let (guard2, cursor2) = CursorLockGuard::acquire(session_id).expect("acquire失敗");
-            assert_eq!(cursor2, 500);
+            assert_eq!(cursor2, Some(500));
             guard2.commit(1000).expect("commit失敗");
 
-            // 3回目: cursor=1000
+            // 3回目: cursor=Some(1000)
             let (_, cursor3) = CursorLockGuard::acquire(session_id).expect("acquire失敗");
-            assert_eq!(cursor3, 1000);
+            assert_eq!(cursor3, Some(1000));
         });
     }
 }

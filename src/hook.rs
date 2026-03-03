@@ -76,7 +76,21 @@ async fn flush_transcript(
     ctx: &SessionContext,
     sender: &WebhookSender,
 ) -> Result<()> {
-    let (lock, cursor) = config::CursorLockGuard::acquire(session_id)?;
+    let (lock, maybe_cursor) = config::CursorLockGuard::acquire(session_id)?;
+
+    let cursor = match maybe_cursor {
+        None => {
+            // カーソルファイルが存在しない = 有効化直後の初回フラッシュ
+            // 過去メッセージは送信せず、現在のファイル末尾にカーソルを設定する
+            let file_size = std::fs::metadata(transcript_path)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            lock.commit(file_size)?;
+            return Ok(());
+        }
+        Some(c) => c,
+    };
+
     let (messages, new_cursor) =
         crate::transcript::read_new_assistant_texts(transcript_path, cursor)?;
 
