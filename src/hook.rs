@@ -133,6 +133,31 @@ pub async fn handle_hook(event: &str) -> Result<()> {
     let ctx = input.to_session_context();
     let sender = WebhookSender::new(webhook_url);
 
+    // Stop はtranscript書き込みのレースコンディション対策として、
+    // ファイルサイズが安定するまでポーリングしてからflushする。
+    // 最低100ms待機し、その後100ms間隔でサイズを確認。
+    // 安定（変化なし）になったらflushへ進む（最大1秒でタイムアウト）。
+    if event == "stop" {
+        if let Some(transcript_path) = &input.transcript_path {
+            // 最低100ms待機（Claude Code の transcript 書き込みを待つ）
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            let mut prev_size = std::fs::metadata(transcript_path.as_str())
+                .map(|m| m.len())
+                .unwrap_or(0);
+            // 最大9回（+最初の1回で合計最大1秒）ポーリング
+            for _ in 0..9u32 {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                let current_size = std::fs::metadata(transcript_path.as_str())
+                    .map(|m| m.len())
+                    .unwrap_or(0);
+                if current_size == prev_size {
+                    break; // サイズが安定した → 書き込み完了とみなす
+                }
+                prev_size = current_size;
+            }
+        }
+    }
+
     // トランスクリプト・フラッシュ（全イベント共通）
     // PreToolUse + Stop の二重送信を防ぐため、Stop も transcript flush で統一する。
     // カーソルLockによりどちらのフックが先に実行されても整合が保たれる。
