@@ -70,12 +70,13 @@ pub async fn handle_toggle() -> Result<()> {
 
 /// トランスクリプトから未送信のassistantテキストをフラッシュして送信する
 /// カーソルロックで同一セッションの並行実行を直列化する
+/// 戻り値: 送信したメッセージ数（0 = 新着なし or 初回フラッシュ）
 async fn flush_transcript(
     session_id: &str,
     transcript_path: &str,
     ctx: &SessionContext,
     sender: &WebhookSender,
-) -> Result<()> {
+) -> Result<usize> {
     let (lock, maybe_cursor) = config::CursorLockGuard::acquire(session_id)?;
 
     let cursor = match maybe_cursor {
@@ -86,7 +87,7 @@ async fn flush_transcript(
                 .map(|m| m.len())
                 .unwrap_or(0);
             lock.commit(file_size)?;
-            return Ok(());
+            return Ok(0);
         }
         Some(c) => c,
     };
@@ -94,6 +95,7 @@ async fn flush_transcript(
     let (messages, new_cursor) =
         crate::transcript::read_new_assistant_texts(transcript_path, cursor)?;
 
+    let count = messages.len();
     for msg in messages {
         let payload = formatter::format_assistant_message(&msg, ctx);
         sender.send(payload).await?;
@@ -101,7 +103,7 @@ async fn flush_transcript(
 
     // 送信成功後にのみカーソルを更新（at-least-once保証）
     lock.commit(new_cursor)?;
-    Ok(())
+    Ok(count)
 }
 
 pub async fn handle_hook(event: &str) -> Result<()> {
@@ -133,37 +135,12 @@ pub async fn handle_hook(event: &str) -> Result<()> {
     let ctx = input.to_session_context();
     let sender = WebhookSender::new(webhook_url);
 
-    // Stop はtranscript書き込みのレースコンディション対策として、
-    // ファイルサイズが安定するまでポーリングしてからflushする。
-    // 最低100ms待機し、その後100ms間隔でサイズを確認。
-    // 安定（変化なし）になったらflushへ進む（最大1秒でタイムアウト）。
-    if event == "stop" {
+    // トランスクリプト・フラッシュ（Stop以外の全イベント共通）
+    if event != "stop" {
         if let Some(transcript_path) = &input.transcript_path {
-            // 最低100ms待機（Claude Code の transcript 書き込みを待つ）
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            let mut prev_size = std::fs::metadata(transcript_path.as_str())
-                .map(|m| m.len())
-                .unwrap_or(0);
-            // 最大9回（+最初の1回で合計最大1秒）ポーリング
-            for _ in 0..9u32 {
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                let current_size = std::fs::metadata(transcript_path.as_str())
-                    .map(|m| m.len())
-                    .unwrap_or(0);
-                if current_size == prev_size {
-                    break; // サイズが安定した → 書き込み完了とみなす
-                }
-                prev_size = current_size;
+            if let Err(e) = flush_transcript(session_id, transcript_path, &ctx, &sender).await {
+                eprintln!("aloud-code: トランスクリプトフラッシュエラー: {}", e);
             }
-        }
-    }
-
-    // トランスクリプト・フラッシュ（全イベント共通）
-    // PreToolUse + Stop の二重送信を防ぐため、Stop も transcript flush で統一する。
-    // カーソルLockによりどちらのフックが先に実行されても整合が保たれる。
-    if let Some(transcript_path) = &input.transcript_path {
-        if let Err(e) = flush_transcript(session_id, transcript_path, &ctx, &sender).await {
-            eprintln!("aloud-code: トランスクリプトフラッシュエラー: {}", e);
         }
     }
 
@@ -176,12 +153,34 @@ pub async fn handle_hook(event: &str) -> Result<()> {
                 sender.send(payload).await?;
             }
         }
-        "pre-tool-use" => {
-            // フラッシュのみ（上で実行済み）
-        }
         "stop" => {
-            // transcript flush で全テキスト送信済み
-            // last_assistant_message は使わない（PreToolUseとの二重送信防止）
+            // transcript flush を試みる。
+            // 0件（= transcript 書き込みがまだ完了していないレースコンディション）の場合のみ
+            // last_assistant_message にフォールバックしてカーソルを末尾に進める。
+            // PreToolUse を廃止したため二重送信は起きない。
+            let flushed = if let Some(transcript_path) = &input.transcript_path {
+                flush_transcript(session_id, transcript_path, &ctx, &sender)
+                    .await
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            if flushed == 0 {
+                let message = input.last_assistant_message.as_deref().unwrap_or("");
+                if !message.is_empty() {
+                    let payload = formatter::format_assistant_message(message, &ctx);
+                    sender.send(payload).await?;
+                }
+                // カーソルをファイル末尾に進め、次回UserPromptSubmitでの重複送信を防ぐ
+                if let Some(transcript_path) = &input.transcript_path {
+                    let file_size = std::fs::metadata(transcript_path.as_str())
+                        .map(|m| m.len())
+                        .unwrap_or(0);
+                    if let Ok((lock, _)) = config::CursorLockGuard::acquire(session_id) {
+                        let _ = lock.commit(file_size);
+                    }
+                }
+            }
         }
         "subagent-stop" => {
             let agent_type = input.agent_type.as_deref().unwrap_or("Agent");
