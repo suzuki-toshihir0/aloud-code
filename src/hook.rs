@@ -150,7 +150,7 @@ pub async fn handle_hook(event: &str) -> Result<()> {
                 sender.send(payload).await?;
             }
         }
-        "stop" => {
+        "pre-tool-use" | "stop" => {
             // フラッシュで全assistantテキストが送信済み。追加処理なし。
         }
         "subagent-stop" => {

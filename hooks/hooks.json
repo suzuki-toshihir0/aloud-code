@@ -18,6 +18,14 @@
         }]
       }
     ],
+    "PreToolUse": [{
+      "hooks": [{
+        "type": "command",
+        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/aloud-code.sh pre-tool-use",
+        "timeout": 30,
+        "async": true
+      }]
+    }],
     "Stop": [{
       "hooks": [{
         "type": "command",
