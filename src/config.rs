@@ -1,4 +1,5 @@
 use anyhow::Result;
+use fs2::FileExt;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -24,6 +25,67 @@ impl Config {
     }
 }
 
+/// セッションごとのカーソルロックガード
+/// acquire() でファイルロックを取得し、commit() で更新・解放する
+pub struct CursorLockGuard {
+    lock_file: std::fs::File,
+    session_id: String,
+}
+
+impl CursorLockGuard {
+    /// ファイルロックを排他取得してカーソル値を返す
+    pub fn acquire(session_id: &str) -> Result<(Self, u64)> {
+        let dir = sessions_dir()?;
+        std::fs::create_dir_all(&dir)?;
+        let lock_path = dir.join(format!("{}.cursor.lock", session_id));
+        let lock_file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(&lock_path)?;
+        lock_file.lock_exclusive()?;
+        let cursor = read_cursor_inner(session_id);
+        Ok((
+            CursorLockGuard {
+                lock_file,
+                session_id: session_id.to_string(),
+            },
+            cursor,
+        ))
+    }
+
+    /// カーソルを新しい値に更新してロックを解放する（送信成功後に呼び出す）
+    pub fn commit(self, new_cursor: u64) -> Result<()> {
+        write_cursor_inner(&self.session_id, new_cursor)?;
+        self.lock_file.unlock()?;
+        Ok(())
+    }
+}
+
+impl Drop for CursorLockGuard {
+    fn drop(&mut self) {
+        let _ = self.lock_file.unlock();
+    }
+}
+
+fn read_cursor_inner(session_id: &str) -> u64 {
+    cursor_path(session_id)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+fn write_cursor_inner(session_id: &str, cursor: u64) -> Result<()> {
+    let path = cursor_path(session_id)?;
+    std::fs::write(path, cursor.to_string())?;
+    Ok(())
+}
+
+fn cursor_path(session_id: &str) -> Result<PathBuf> {
+    Ok(sessions_dir()?.join(format!("{}.cursor", session_id)))
+}
+
 pub fn is_active(session_id: &str) -> bool {
     sessions_dir()
         .map(|d| d.join(session_id).exists())
@@ -38,12 +100,20 @@ pub fn activate(session_id: &str) -> Result<()> {
 }
 
 pub fn deactivate(session_id: &str) -> Result<()> {
-    let path = sessions_dir()?.join(session_id);
-    match std::fs::remove_file(&path) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.into()),
+    let dir = sessions_dir()?;
+    let paths = [
+        dir.join(session_id),
+        dir.join(format!("{}.cursor", session_id)),
+        dir.join(format!("{}.cursor.lock", session_id)),
+    ];
+    for path in &paths {
+        match std::fs::remove_file(path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
     }
+    Ok(())
 }
 
 fn config_file_path() -> Result<PathBuf> {
@@ -85,14 +155,12 @@ mod tests {
 
     #[test]
     fn test_config_default_when_no_file() {
-        // デフォルト設定が返ることを確認（ファイルが存在しない場合）
         let config = Config::default();
         assert!(config.webhook.url.is_none());
     }
 
     #[test]
     fn test_config_parse_webhook_url() {
-        // TOMLパースのテスト
         let toml_str = r#"
 [webhook]
 url = "https://hooks.slack.com/services/test"
@@ -113,7 +181,6 @@ url = "https://hooks.slack.com/services/test"
 
     #[test]
     fn test_active_flag_lifecycle() {
-        // セッションIDごとのフラグ作成・確認・削除をテスト
         with_temp_state_dir(|| {
             let session_id = "test-session-lifecycle";
             let _ = deactivate(session_id);
@@ -129,7 +196,6 @@ url = "https://hooks.slack.com/services/test"
 
     #[test]
     fn test_deactivate_idempotent() {
-        // フラグが存在しなくてもdeactivateはエラーにならない
         with_temp_state_dir(|| {
             let _ = deactivate("nonexistent-session");
             let result = deactivate("nonexistent-session");
@@ -139,7 +205,6 @@ url = "https://hooks.slack.com/services/test"
 
     #[test]
     fn test_multiple_sessions_concurrent() {
-        // 複数セッションが同時にONにできることを確認
         with_temp_state_dir(|| {
             activate("session-a").expect("session-a activate失敗");
             activate("session-b").expect("session-b activate失敗");
@@ -147,6 +212,72 @@ url = "https://hooks.slack.com/services/test"
             assert!(is_active("session-a"), "session-aがアクティブでない");
             assert!(is_active("session-b"), "session-bがアクティブでない");
             assert!(!is_active("session-c"), "session-cがアクティブになっている");
+        });
+    }
+
+    #[test]
+    fn test_cursor_read_write() {
+        with_temp_state_dir(|| {
+            let session_id = "cursor-test-session";
+            // セッションを有効化してディレクトリを作成
+            activate(session_id).expect("activate失敗");
+            write_cursor_inner(session_id, 12345).expect("cursor書き込み失敗");
+            let cursor = read_cursor_inner(session_id);
+            assert_eq!(cursor, 12345);
+        });
+    }
+
+    #[test]
+    fn test_cursor_default_zero() {
+        with_temp_state_dir(|| {
+            // カーソルファイルがない場合は0
+            activate("no-cursor-session").expect("activate失敗");
+            let cursor = read_cursor_inner("no-cursor-session");
+            assert_eq!(cursor, 0);
+        });
+    }
+
+    #[test]
+    fn test_cursor_deleted_on_deactivate() {
+        with_temp_state_dir(|| {
+            let session_id = "deactivate-cursor-session";
+            activate(session_id).expect("activate失敗");
+            write_cursor_inner(session_id, 999).expect("cursor書き込み失敗");
+
+            let dir = sessions_dir().unwrap();
+            assert!(dir.join(format!("{}.cursor", session_id)).exists());
+
+            deactivate(session_id).expect("deactivate失敗");
+            assert!(
+                !dir.join(session_id).exists(),
+                "セッションファイルが残っている"
+            );
+            assert!(
+                !dir.join(format!("{}.cursor", session_id)).exists(),
+                "cursorファイルが残っている"
+            );
+        });
+    }
+
+    #[test]
+    fn test_cursor_lock_acquire_commit() {
+        with_temp_state_dir(|| {
+            let session_id = "lock-test-session";
+            activate(session_id).expect("activate失敗");
+
+            // 初回: cursor=0
+            let (guard, cursor) = CursorLockGuard::acquire(session_id).expect("acquire失敗");
+            assert_eq!(cursor, 0);
+            guard.commit(500).expect("commit失敗");
+
+            // 2回目: cursor=500
+            let (guard2, cursor2) = CursorLockGuard::acquire(session_id).expect("acquire失敗");
+            assert_eq!(cursor2, 500);
+            guard2.commit(1000).expect("commit失敗");
+
+            // 3回目: cursor=1000
+            let (_, cursor3) = CursorLockGuard::acquire(session_id).expect("acquire失敗");
+            assert_eq!(cursor3, 1000);
         });
     }
 }

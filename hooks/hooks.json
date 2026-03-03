@@ -25,6 +25,31 @@
         "timeout": 30,
         "async": true
       }]
+    }],
+    "SubagentStop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/aloud-code.sh subagent-stop",
+        "timeout": 30,
+        "async": true
+      }]
+    }],
+    "Notification": [{
+      "matcher": "elicitation_dialog",
+      "hooks": [{
+        "type": "command",
+        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/aloud-code.sh notification",
+        "timeout": 30,
+        "async": true
+      }]
+    }],
+    "SessionEnd": [{
+      "hooks": [{
+        "type": "command",
+        "command": "${CLAUDE_PLUGIN_ROOT}/hooks/aloud-code.sh session-end",
+        "timeout": 30,
+        "async": true
+      }]
     }]
   }
 }
